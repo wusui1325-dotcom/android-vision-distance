@@ -1,19 +1,15 @@
-package com.monorange.app.engine
+package com.wusper.vision.distance.engine
 
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
-import com.monorange.app.model.CameraIntrinsics
+import com.wusper.vision.distance.model.CameraIntrinsics
 import kotlin.math.atan
 import kotlin.math.max
 import kotlin.math.min
 
 object CameraIntrinsicsHelper {
 
-    /**
-     * Reads back-facing camera focal length and physical sensor dimensions via Camera2 API
-     * and computes vertical/horizontal FOV for portrait orientation.
-     */
     fun readBackCameraIntrinsics(context: Context): CameraIntrinsics {
         return try {
             val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -27,7 +23,6 @@ object CameraIntrinsicsHelper {
 
                 if (focalLengths != null && focalLengths.isNotEmpty() && sensorSize != null) {
                     val focal = focalLengths[0]
-                    // In portrait mode, the longer sensor edge aligns vertically
                     val longEdge = max(sensorSize.width, sensorSize.height)
                     val shortEdge = min(sensorSize.width, sensorSize.height)
 

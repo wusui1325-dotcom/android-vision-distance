@@ -1,4 +1,4 @@
-package com.monorange.app.ui.screens
+package com.wusper.vision.distance.ui.screens
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Height
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.LinearScale
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Terrain
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,13 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.monorange.app.engine.DistanceCalculator
-import com.monorange.app.model.DistanceUnit
-import com.monorange.app.model.MeasurementMode
-import com.monorange.app.model.MeasurementRecord
-import com.monorange.app.ui.components.StreamlinedCircleIconButton
-import com.monorange.app.ui.components.StreamlinedItemRow
-import com.monorange.app.ui.components.StreamlinedPillButton
+import com.wusper.vision.distance.engine.DistanceCalculator
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.MeasurementMode
+import com.wusper.vision.distance.model.MeasurementRecord
+import com.wusper.vision.distance.ui.components.StreamlinedCircleIconButton
+import com.wusper.vision.distance.ui.components.StreamlinedItemRow
+import com.wusper.vision.distance.ui.components.StreamlinedPillButton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -159,6 +160,7 @@ fun HistorySheet(
 
                         val modeIcon = when (rec.mode) {
                             MeasurementMode.GROUND_PITCH -> Icons.Rounded.Terrain
+                            MeasurementMode.TWO_POINT -> Icons.Rounded.LinearScale
                             MeasurementMode.OBJECT_REF -> Icons.Rounded.AspectRatio
                             MeasurementMode.HEIGHT_MEASURE -> Icons.Rounded.Height
                         }

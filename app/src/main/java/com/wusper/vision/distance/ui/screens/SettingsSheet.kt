@@ -1,11 +1,10 @@
-package com.monorange.app.ui.screens
+package com.wusper.vision.distance.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,10 +35,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.monorange.app.model.DistanceUnit
-import com.monorange.app.model.RangefinderUiState
-import com.monorange.app.ui.components.StreamlinedItemRow
-import com.monorange.app.ui.components.StreamlinedPillButton
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.RangefinderUiState
+import com.wusper.vision.distance.ui.components.StreamlinedItemRow
+import com.wusper.vision.distance.ui.components.StreamlinedPillButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,11 +84,10 @@ fun SettingsSheet(
                 )
             }
 
-            // 1. Camera Height Calibration
             StreamlinedItemRow(
                 icon = Icons.Rounded.Height,
                 title = "鏡頭離地高度",
-                subtitle = "目前：${String.format("%.2f", state.cameraHeightMeters)} m（地面測距基準）"
+                subtitle = "目前：${String.format("%.2f", state.cameraHeightMeters)} m（地面與兩點測距基準）"
             )
             Slider(
                 value = state.cameraHeightMeters,
@@ -102,7 +100,6 @@ fun SettingsSheet(
                 )
             )
 
-            // 2. Focal / FOV Calibration Factor
             StreamlinedItemRow(
                 icon = Icons.Rounded.CameraEnhance,
                 title = "鏡頭焦距微調係數",
@@ -121,7 +118,6 @@ fun SettingsSheet(
                 )
             )
 
-            // 3. Horizon Pitch Zero Calibration
             StreamlinedItemRow(
                 icon = Icons.Rounded.CompassCalibration,
                 title = "水平零點校準",
@@ -145,7 +141,6 @@ fun SettingsSheet(
                 }
             )
 
-            // 4. Sensor Smoothing
             StreamlinedItemRow(
                 icon = Icons.Rounded.GraphicEq,
                 title = "感測器平滑濾波",
@@ -162,7 +157,6 @@ fun SettingsSheet(
                 )
             )
 
-            // 5. Distance Unit Picker (all with icon)
             StreamlinedItemRow(
                 icon = Icons.Rounded.Straighten,
                 title = "距離顯示單位",
@@ -184,7 +178,6 @@ fun SettingsSheet(
                 }
             }
 
-            // 6. Monochrome Theme Switch
             StreamlinedItemRow(
                 icon = if (state.darkMonoTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
                 title = "純黑 / 純白介面主題",
@@ -202,7 +195,6 @@ fun SettingsSheet(
                 onClick = onToggleTheme
             )
 
-            // 7. Haptics Switch
             StreamlinedItemRow(
                 icon = Icons.Rounded.Vibration,
                 title = "觸覺震動回饋",

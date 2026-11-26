@@ -1,6 +1,7 @@
-package com.monorange.app.engine
+package com.wusper.vision.distance.engine
 
-import com.monorange.app.model.DistanceUnit
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.GroundAnchorPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -28,6 +29,33 @@ class DistanceCalculatorTest {
     }
 
     @Test
+    fun twoPointGroundDistance_rightAngle_matchesPythagorean345() {
+        val pointA = GroundAnchorPoint(radialDistanceMeters = 3.0f, azimuthDeg = 0f, pitchDeg = -26f)
+        val pointB = GroundAnchorPoint(radialDistanceMeters = 4.0f, azimuthDeg = 90f, pitchDeg = -20f)
+        val ab = DistanceCalculator.calculateTwoPointGroundDistance(pointA, pointB)
+        assertEquals(5.0f, ab, 0.02f)
+    }
+
+    @Test
+    fun twoPointGroundDistance_collinear_equalsDifference() {
+        val pointA = GroundAnchorPoint(radialDistanceMeters = 2.0f, azimuthDeg = 15f, pitchDeg = -37f)
+        val pointB = GroundAnchorPoint(radialDistanceMeters = 5.5f, azimuthDeg = 15f, pitchDeg = -15f)
+        val ab = DistanceCalculator.calculateTwoPointGroundDistance(pointA, pointB)
+        assertEquals(3.5f, ab, 0.02f)
+    }
+
+    @Test
+    fun twoPointGroundDistance_wrapAroundAzimuth_computesShortestAngle() {
+        val delta = DistanceCalculator.shortestAngleDeltaDeg(350f, 10f)
+        assertEquals(20f, delta, 0.01f)
+        val pointA = GroundAnchorPoint(radialDistanceMeters = 4.0f, azimuthDeg = 350f, pitchDeg = -20f)
+        val pointB = GroundAnchorPoint(radialDistanceMeters = 4.0f, azimuthDeg = 10f, pitchDeg = -20f)
+        val ab = DistanceCalculator.calculateTwoPointGroundDistance(pointA, pointB)
+        // 2 * 4 * sin(10 deg) ~= 1.389m
+        assertEquals(1.39f, ab, 0.02f)
+    }
+
+    @Test
     fun objectHeight_atHorizontalTop_equalsCameraHeight() {
         val height = DistanceCalculator.calculateObjectHeight(
             cameraHeightMeters = 1.50f,
@@ -51,8 +79,6 @@ class DistanceCalculatorTest {
 
     @Test
     fun pinholeDistance_knownFovAndHalfFrame_computesAccurately() {
-        // Vertical FOV = 90 deg -> tan(45 deg) = 1.0 -> full frame height = 2*D
-        // Object spans 0.5 of frame -> realSize = D -> D = 1.70m
         val dist = DistanceCalculator.calculatePinholeDistance(
             realSizeMeters = 1.70f,
             objectFractionOfViewHeight = 0.50f,

@@ -1,4 +1,4 @@
-package com.monorange.app.ui.components
+package com.wusper.vision.distance.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -32,13 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.monorange.app.ui.theme.MonoBlack
-import com.monorange.app.ui.theme.MonoWhite
+import com.wusper.vision.distance.ui.theme.MonoBlack
+import com.wusper.vision.distance.ui.theme.MonoWhite
 
-/**
- * Flat streamlined monochrome icon + text pill button.
- * Every button enforces an icon alongside its label.
- */
 @Composable
 fun StreamlinedPillButton(
     icon: ImageVector,
@@ -48,7 +44,8 @@ fun StreamlinedPillButton(
     selected: Boolean = false,
     inverted: Boolean = false,
     enabled: Boolean = true,
-    height: Dp = 40.dp
+    height: Dp = 40.dp,
+    horizontalPadding: Dp = 12.dp
 ) {
     val scheme = MaterialTheme.colorScheme
     val isFilled = selected || inverted
@@ -82,16 +79,16 @@ fun StreamlinedPillButton(
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
+            modifier = Modifier.padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                modifier = Modifier.size(17.dp)
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium.copy(
@@ -104,9 +101,6 @@ fun StreamlinedPillButton(
     }
 }
 
-/**
- * Circular flat streamlined icon button for HUD toolbars.
- */
 @Composable
 fun StreamlinedCircleIconButton(
     icon: ImageVector,
@@ -145,9 +139,6 @@ fun StreamlinedCircleIconButton(
     }
 }
 
-/**
- * Streamlined shutter / primary action button with icon + concentric monochrome ring.
- */
 @Composable
 fun StreamlinedPrimaryActionButton(
     icon: ImageVector,
@@ -180,9 +171,6 @@ fun StreamlinedPrimaryActionButton(
     }
 }
 
-/**
- * Flat streamlined settings / list item row with mandatory leading icon badge.
- */
 @Composable
 fun StreamlinedItemRow(
     icon: ImageVector,
@@ -242,9 +230,6 @@ fun StreamlinedItemRow(
     }
 }
 
-/**
- * Compact monochrome telemetry pill with icon (e.g., Pitch, Roll, Height).
- */
 @Composable
 fun TelemetryPill(
     icon: ImageVector,

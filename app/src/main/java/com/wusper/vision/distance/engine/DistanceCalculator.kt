@@ -1,7 +1,10 @@
-package com.monorange.app.engine
+package com.wusper.vision.distance.engine
 
-import com.monorange.app.model.DistanceUnit
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.GroundAnchorPoint
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sqrt
 import kotlin.math.tan
 
 object DistanceCalculator {
@@ -30,6 +33,33 @@ object DistanceCalculator {
         if (tanVal <= 1e-6) return null
         val distance = (cameraHeightMeters / tanVal).toFloat()
         return distance.coerceIn(MIN_DISTANCE_METERS, MAX_DISTANCE_METERS)
+    }
+
+    /**
+     * Shortest signed angular difference in degrees in range [-180, 180].
+     */
+    fun shortestAngleDeltaDeg(fromDeg: Float, toDeg: Float): Float {
+        var delta = (toDeg - fromDeg) % 360f
+        if (delta > 180f) delta -= 360f
+        if (delta < -180f) delta += 360f
+        return delta
+    }
+
+    /**
+     * Two-point ground-plane distance between Start Point A and End Point B
+     * captured from the same standing position using camera center crosshair + azimuth/pitch:
+     * D_AB = sqrt(rA^2 + rB^2 - 2 * rA * rB * cos(deltaAzimuth))
+     */
+    fun calculateTwoPointGroundDistance(
+        pointA: GroundAnchorPoint,
+        pointB: GroundAnchorPoint
+    ): Float {
+        val rA = pointA.radialDistanceMeters.toDouble()
+        val rB = pointB.radialDistanceMeters.toDouble()
+        val deltaDeg = shortestAngleDeltaDeg(pointA.azimuthDeg, pointB.azimuthDeg).toDouble()
+        val deltaRad = Math.toRadians(deltaDeg)
+        val sq = (rA * rA + rB * rB - 2.0 * rA * rB * cos(deltaRad)).coerceAtLeast(0.0)
+        return sqrt(sq).toFloat().coerceAtMost(MAX_DISTANCE_METERS)
     }
 
     /**

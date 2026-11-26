@@ -1,4 +1,4 @@
-package com.monorange.app.ui.theme
+package com.wusper.vision.distance.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme

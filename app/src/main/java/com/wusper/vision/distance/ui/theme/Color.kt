@@ -1,8 +1,7 @@
-package com.monorange.app.ui.theme
+package com.wusper.vision.distance.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Pure Monochrome Flat Streamlined Palette
 val MonoBlack = Color(0xFF000000)
 val MonoObsidian = Color(0xFF0A0A0A)
 val MonoCharcoal = Color(0xFF141414)

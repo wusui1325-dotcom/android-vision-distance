@@ -1,12 +1,14 @@
-package com.monorange.app.model
+package com.wusper.vision.distance.model
 
 enum class MeasurementMode(
+    val shortLabel: String,
     val label: String,
     val shortHint: String
 ) {
-    GROUND_PITCH("地面測距", "準星對準目標底部觸地點"),
-    OBJECT_REF("物體比對", "拖曳卡尺框住已知尺寸目標"),
-    HEIGHT_MEASURE("兩點測高", "先鎖定底部，再瞄準頂端")
+    GROUND_PITCH("地面", "地面測距", "準星對準目標底部觸地點"),
+    TWO_POINT("兩點", "兩點測距", "準星對準起點 A 後設定，再瞄準終點 B"),
+    OBJECT_REF("比對", "物體比對", "拖曳卡尺框住已知尺寸目標"),
+    HEIGHT_MEASURE("測高", "兩點測高", "先鎖定底部，再瞄準頂端")
 }
 
 enum class DistanceUnit(
@@ -40,6 +42,15 @@ data class CameraIntrinsics(
     val horizontalFovDeg: Float = 52.0f
 )
 
+/**
+ * A ground-plane anchor point captured via camera center crosshair + IMU orientation.
+ */
+data class GroundAnchorPoint(
+    val radialDistanceMeters: Float,
+    val azimuthDeg: Float,
+    val pitchDeg: Float
+)
+
 data class MeasurementRecord(
     val id: Long,
     val timestampMs: Long,
@@ -62,6 +73,7 @@ data class RangefinderUiState(
     // Live sensor telemetry
     val pitchDeg: Float = -25f,
     val rollDeg: Float = 0f,
+    val azimuthDeg: Float = 0f,
     val pitchOffsetDeg: Float = 0f,
     val smoothingAlpha: Float = 0.18f,
 
@@ -78,6 +90,12 @@ data class RangefinderUiState(
 
     // Two-point height measurement state
     val baseLockedDistanceMeters: Float? = null,
+
+    // Two-point ground distance (A -> B) state
+    val startPointA: GroundAnchorPoint? = null,
+    val endPointB: GroundAnchorPoint? = null,
+    val twoPointDeltaAngleDeg: Float? = null,
+    val liveCursorGroundDistanceMeters: Float? = null,
 
     // Live / locked outputs
     val liveDistanceMeters: Float? = null,

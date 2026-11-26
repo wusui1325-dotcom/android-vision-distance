@@ -1,4 +1,4 @@
-package com.monorange.app.ui.screens
+package com.wusper.vision.distance.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CenterFocusStrong
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Height
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LinearScale
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.MyLocation
@@ -58,9 +60,11 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonPin
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.ScreenRotationAlt
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.Terrain
+import androidx.compose.material.icons.rounded.TripOrigin
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.AlertDialog
@@ -86,18 +90,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.monorange.app.engine.DistanceCalculator
-import com.monorange.app.engine.OrientationSensorManager
-import com.monorange.app.model.MeasurementMode
-import com.monorange.app.model.RangefinderUiState
-import com.monorange.app.model.ReferencePreset
-import com.monorange.app.ui.components.CaliperOverlay
-import com.monorange.app.ui.components.ReticleOverlay
-import com.monorange.app.ui.components.StreamlinedCircleIconButton
-import com.monorange.app.ui.components.StreamlinedPillButton
-import com.monorange.app.ui.components.StreamlinedPrimaryActionButton
-import com.monorange.app.ui.components.TelemetryPill
-import com.monorange.app.viewmodel.RangefinderViewModel
+import com.wusper.vision.distance.engine.DistanceCalculator
+import com.wusper.vision.distance.engine.OrientationSensorManager
+import com.wusper.vision.distance.model.MeasurementMode
+import com.wusper.vision.distance.model.RangefinderUiState
+import com.wusper.vision.distance.model.ReferencePreset
+import com.wusper.vision.distance.ui.components.CaliperOverlay
+import com.wusper.vision.distance.ui.components.ReticleOverlay
+import com.wusper.vision.distance.ui.components.StreamlinedCircleIconButton
+import com.wusper.vision.distance.ui.components.StreamlinedPillButton
+import com.wusper.vision.distance.ui.components.StreamlinedPrimaryActionButton
+import com.wusper.vision.distance.ui.components.TelemetryPill
+import com.wusper.vision.distance.viewmodel.RangefinderViewModel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -127,10 +131,9 @@ fun RangefinderScreen(
         }
     }
 
-    // Bind orientation sensor
     val sensorManager = remember(context) {
-        OrientationSensorManager(context) { pitch, roll ->
-            viewModel.onSensorUpdate(pitch, roll)
+        OrientationSensorManager(context) { pitch, roll, azimuth ->
+            viewModel.onSensorUpdate(pitch, roll, azimuth)
         }
     }
     LaunchedEffect(state.smoothingAlpha) {
@@ -141,7 +144,6 @@ fun RangefinderScreen(
         onDispose { sensorManager.stop() }
     }
 
-    // Auto-clear transient status banner
     LaunchedEffect(state.statusBanner) {
         if (state.statusBanner != null) {
             delay(2200)
@@ -166,18 +168,24 @@ fun RangefinderScreen(
         return
     }
 
+    val twoPointStageLabel = if (state.mode == MeasurementMode.TWO_POINT) {
+        when {
+            state.startPointA == null -> "瞄準起始點 A"
+            state.endPointB == null -> "瞄準結束點 B"
+            else -> "A→B 已鎖定"
+        }
+    } else null
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. Live CameraX Preview
         CameraPreviewSurface(
             torchEnabled = state.torchEnabled,
             modifier = Modifier.fillMaxSize()
         )
 
-        // 2. Visual Measurement Overlay (Reticle or Draggable Caliper)
         if (state.mode == MeasurementMode.OBJECT_REF) {
             CaliperOverlay(
                 topFraction = state.caliperTopFraction,
@@ -188,11 +196,12 @@ fun RangefinderScreen(
             ReticleOverlay(
                 rollDeg = state.rollDeg,
                 showGrid = state.showGrid,
-                isLocked = state.isLocked
+                isLocked = state.isLocked || (state.mode == MeasurementMode.TWO_POINT && state.endPointB != null),
+                pointStageLabel = twoPointStageLabel
             )
         }
 
-        // 3. Top Streamlined HUD Toolbar + Readout Capsule
+        // Top HUD Toolbar + Readout Card
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -225,7 +234,7 @@ fun RangefinderScreen(
             }
         }
 
-        // 4. Bottom Streamlined Dock (Context Controls + Mode Switcher + Shutter Dock)
+        // Bottom Streamlined Controls Dock
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -234,44 +243,66 @@ fun RangefinderScreen(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Mode-specific quick preset / calibration bar (every item has an icon)
-            if (state.mode == MeasurementMode.OBJECT_REF) {
-                ReferencePresetStrip(
-                    selected = state.selectedPreset,
-                    customMeters = state.customObjectSizeMeters,
-                    onSelectPreset = { preset ->
-                        hapticClick()
-                        if (preset == ReferencePreset.CUSTOM) {
-                            showCustomSizeDialog = true
-                        } else {
-                            viewModel.selectPreset(preset)
+            when (state.mode) {
+                MeasurementMode.OBJECT_REF -> {
+                    ReferencePresetStrip(
+                        selected = state.selectedPreset,
+                        customMeters = state.customObjectSizeMeters,
+                        onSelectPreset = { preset ->
+                            hapticClick()
+                            if (preset == ReferencePreset.CUSTOM) {
+                                showCustomSizeDialog = true
+                            } else {
+                                viewModel.selectPreset(preset)
+                            }
                         }
-                    }
-                )
-            } else {
-                CameraHeightQuickStrip(
-                    heightMeters = state.cameraHeightMeters,
-                    onAdjust = { delta -> hapticClick(); viewModel.adjustCameraHeight(delta) },
-                    onQuickSet = { h -> hapticClick(); viewModel.setCameraHeight(h) }
-                )
+                    )
+                }
+
+                MeasurementMode.TWO_POINT -> {
+                    TwoPointControlStrip(
+                        state = state,
+                        onSetPointA = { hapticClick(); viewModel.setStartPointA() },
+                        onSetPointB = { hapticClick(); viewModel.setEndPointB() },
+                        onClearPoints = { hapticClick(); viewModel.clearTwoPoints() }
+                    )
+                }
+
+                else -> {
+                    CameraHeightQuickStrip(
+                        heightMeters = state.cameraHeightMeters,
+                        onAdjust = { delta -> hapticClick(); viewModel.adjustCameraHeight(delta) },
+                        onQuickSet = { h -> hapticClick(); viewModel.setCameraHeight(h) }
+                    )
+                }
             }
 
-            // Streamlined Mode Switcher Capsule
             ModeSwitcherCapsule(
                 currentMode = state.mode,
                 onSelectMode = { mode -> hapticClick(); viewModel.selectMode(mode) }
             )
 
-            // Primary Action Dock
             BottomActionDock(
                 state = state,
                 onToggleLock = { hapticClick(); viewModel.toggleLock() },
                 onPrimaryAction = {
                     hapticClick()
-                    if (state.mode == MeasurementMode.HEIGHT_MEASURE && state.baseLockedDistanceMeters == null) {
-                        viewModel.lockBaseForHeight()
-                    } else {
-                        viewModel.saveCurrentMeasurement()
+                    when (state.mode) {
+                        MeasurementMode.TWO_POINT -> {
+                            when {
+                                state.startPointA == null -> viewModel.setStartPointA()
+                                state.endPointB == null -> viewModel.setEndPointB()
+                                else -> viewModel.saveCurrentMeasurement()
+                            }
+                        }
+                        MeasurementMode.HEIGHT_MEASURE -> {
+                            if (state.baseLockedDistanceMeters == null) {
+                                viewModel.lockBaseForHeight()
+                            } else {
+                                viewModel.saveCurrentMeasurement()
+                            }
+                        }
+                        else -> viewModel.saveCurrentMeasurement()
                     }
                 },
                 onReset = { hapticClick(); viewModel.resetMeasurement() }
@@ -321,7 +352,6 @@ private fun CameraPreviewSurface(
     torchEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var cameraRef by remember { mutableStateOf<Camera?>(null) }
 
@@ -422,6 +452,16 @@ private fun DistanceReadoutCard(state: RangefinderUiState) {
     val (distStr, distUnit) = DistanceCalculator.formatDistance(state.liveDistanceMeters, state.unit)
     val shape = RoundedCornerShape(26.dp)
 
+    val headerHint = if (state.mode == MeasurementMode.TWO_POINT) {
+        when {
+            state.startPointA == null -> "兩點測距 · 瞄準起點 A 後點擊設定"
+            state.endPointB == null -> "兩點測距 · 移動準星瞄準終點 B（即時 A→B）"
+            else -> "兩點測距 · A → B 距離已鎖定"
+        }
+    } else {
+        "${state.mode.label} · ${state.mode.shortHint}"
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -435,9 +475,13 @@ private fun DistanceReadoutCard(state: RangefinderUiState) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 val modeIcon = when (state.mode) {
                     MeasurementMode.GROUND_PITCH -> Icons.Rounded.Terrain
+                    MeasurementMode.TWO_POINT -> Icons.Rounded.LinearScale
                     MeasurementMode.OBJECT_REF -> Icons.Rounded.AspectRatio
                     MeasurementMode.HEIGHT_MEASURE -> Icons.Rounded.Height
                 }
@@ -449,13 +493,13 @@ private fun DistanceReadoutCard(state: RangefinderUiState) {
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = state.mode.shortHint,
+                    text = headerHint,
                     style = MaterialTheme.typography.labelMedium,
                     color = scheme.onSurfaceVariant
                 )
             }
 
-            if (state.isLocked) {
+            if (state.isLocked || (state.mode == MeasurementMode.TWO_POINT && state.endPointB != null)) {
                 TelemetryPill(
                     icon = Icons.Rounded.Lock,
                     text = "LOCK",
@@ -515,23 +559,90 @@ private fun DistanceReadoutCard(state: RangefinderUiState) {
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TelemetryPill(
-                icon = Icons.Rounded.Explore,
-                text = String.format("%+.1f°", state.pitchDeg)
-            )
-            TelemetryPill(
-                icon = Icons.Rounded.PersonPin,
-                text = String.format("H %.2fm", state.cameraHeightMeters)
-            )
-            TelemetryPill(
-                icon = Icons.Rounded.ScreenRotationAlt,
-                text = String.format("R %+.1f°", state.rollDeg)
-            )
+        if (state.mode == MeasurementMode.TWO_POINT) {
+            val aText = state.startPointA?.let {
+                val (v, u) = DistanceCalculator.formatDistance(it.radialDistanceMeters, state.unit)
+                "A $v$u"
+            } ?: "A 未設"
+            val bDist = state.endPointB?.radialDistanceMeters ?: state.liveCursorGroundDistanceMeters
+            val bText = if (state.endPointB != null) {
+                val (v, u) = DistanceCalculator.formatDistance(bDist, state.unit)
+                "B $v$u"
+            } else if (state.startPointA != null && bDist != null) {
+                val (v, u) = DistanceCalculator.formatDistance(bDist, state.unit)
+                "B~ $v$u"
+            } else {
+                "B 未設"
+            }
+            val angText = state.twoPointDeltaAngleDeg?.let { String.format("Δ%.1f°", it) }
+                ?: String.format("%+.1f°", state.pitchDeg)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TelemetryPill(icon = Icons.Rounded.TripOrigin, text = aText)
+                TelemetryPill(icon = Icons.Rounded.Adjust, text = bText)
+                TelemetryPill(icon = Icons.Rounded.Explore, text = angText)
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TelemetryPill(
+                    icon = Icons.Rounded.Explore,
+                    text = String.format("%+.1f°", state.pitchDeg)
+                )
+                TelemetryPill(
+                    icon = Icons.Rounded.PersonPin,
+                    text = String.format("H %.2fm", state.cameraHeightMeters)
+                )
+                TelemetryPill(
+                    icon = Icons.Rounded.ScreenRotationAlt,
+                    text = String.format("R %+.1f°", state.rollDeg)
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun TwoPointControlStrip(
+    state: RangefinderUiState,
+    onSetPointA: () -> Unit,
+    onSetPointB: () -> Unit,
+    onClearPoints: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        StreamlinedPillButton(
+            icon = Icons.Rounded.TripOrigin,
+            label = if (state.startPointA == null) "設起點 A" else "重設 A",
+            selected = state.startPointA != null,
+            height = 38.dp,
+            modifier = Modifier.weight(1f),
+            onClick = onSetPointA
+        )
+        StreamlinedPillButton(
+            icon = Icons.Rounded.Adjust,
+            label = if (state.endPointB == null) "設終點 B" else "重設 B",
+            selected = state.endPointB != null,
+            enabled = state.startPointA != null,
+            height = 38.dp,
+            modifier = Modifier.weight(1f),
+            onClick = onSetPointB
+        )
+        StreamlinedCircleIconButton(
+            icon = Icons.Rounded.RestartAlt,
+            contentDescription = "清除起終點",
+            size = 38.dp,
+            iconSize = 18.dp,
+            onClick = onClearPoints
+        )
     }
 }
 
@@ -635,14 +746,16 @@ private fun ModeSwitcherCapsule(
         MeasurementMode.entries.forEach { mode ->
             val icon = when (mode) {
                 MeasurementMode.GROUND_PITCH -> Icons.Rounded.Terrain
+                MeasurementMode.TWO_POINT -> Icons.Rounded.LinearScale
                 MeasurementMode.OBJECT_REF -> Icons.Rounded.AspectRatio
                 MeasurementMode.HEIGHT_MEASURE -> Icons.Rounded.Height
             }
             StreamlinedPillButton(
                 icon = icon,
-                label = mode.label,
+                label = mode.shortLabel,
                 selected = currentMode == mode,
                 height = 38.dp,
+                horizontalPadding = 8.dp,
                 modifier = Modifier.weight(1f),
                 onClick = { onSelectMode(mode) }
             )
@@ -658,8 +771,20 @@ private fun BottomActionDock(
     onReset: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
-    val isAwaitingBaseLock =
-        state.mode == MeasurementMode.HEIGHT_MEASURE && state.baseLockedDistanceMeters == null
+
+    val (primaryIcon, primaryDesc) = when (state.mode) {
+        MeasurementMode.TWO_POINT -> when {
+            state.startPointA == null -> Icons.Rounded.TripOrigin to "設定起始點 A"
+            state.endPointB == null -> Icons.Rounded.Adjust to "設定結束點 B"
+            else -> Icons.Rounded.CenterFocusStrong to "儲存兩點測距"
+        }
+        MeasurementMode.HEIGHT_MEASURE -> if (state.baseLockedDistanceMeters == null) {
+            Icons.Rounded.MyLocation to "鎖定底部距離"
+        } else {
+            Icons.Rounded.CenterFocusStrong to "儲存測高"
+        }
+        else -> Icons.Rounded.CenterFocusStrong to "儲存測距"
+    }
 
     Row(
         modifier = Modifier
@@ -680,8 +805,8 @@ private fun BottomActionDock(
         )
 
         StreamlinedPrimaryActionButton(
-            icon = if (isAwaitingBaseLock) Icons.Rounded.MyLocation else Icons.Rounded.CenterFocusStrong,
-            contentDescription = if (isAwaitingBaseLock) "鎖定底部距離" else "儲存測距",
+            icon = primaryIcon,
+            contentDescription = primaryDesc,
             accentWhite = state.darkMonoTheme,
             onClick = onPrimaryAction
         )

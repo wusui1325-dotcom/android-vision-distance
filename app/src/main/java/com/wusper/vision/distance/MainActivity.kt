@@ -1,4 +1,4 @@
-package com.monorange.app
+package com.wusper.vision.distance
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -7,9 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.monorange.app.ui.screens.RangefinderScreen
-import com.monorange.app.ui.theme.MonoRangeTheme
-import com.monorange.app.viewmodel.RangefinderViewModel
+import com.wusper.vision.distance.ui.screens.RangefinderScreen
+import com.wusper.vision.distance.ui.theme.MonoRangeTheme
+import com.wusper.vision.distance.viewmodel.RangefinderViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

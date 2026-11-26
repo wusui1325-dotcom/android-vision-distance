@@ -1,4 +1,4 @@
-package com.monorange.app.ui.components
+package com.wusper.vision.distance.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -31,14 +31,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.monorange.app.ui.theme.MonoBlack
-import com.monorange.app.ui.theme.MonoWhite
+import com.wusper.vision.distance.ui.theme.MonoBlack
+import com.wusper.vision.distance.ui.theme.MonoWhite
 import kotlin.math.roundToInt
 
-/**
- * Interactive streamlined monochrome caliper overlay for Pinhole (Object Reference) mode.
- * Users drag the top and bottom capsule handles to frame the target object.
- */
 @Composable
 fun CaliperOverlay(
     topFraction: Float,
@@ -64,30 +60,15 @@ fun CaliperOverlay(
             val haloPx = 3.6.dp.toPx()
             val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f), 0f)
 
-            // Vertical span measurement rail
-            drawLine(
-                color = MonoBlack.copy(alpha = 0.5f),
-                start = Offset(midX, topYPx),
-                end = Offset(midX, bottomYPx),
-                strokeWidth = haloPx
-            )
-            drawLine(
-                color = MonoWhite.copy(alpha = 0.85f),
-                start = Offset(midX, topYPx),
-                end = Offset(midX, bottomYPx),
-                strokeWidth = 1.4.dp.toPx(),
-                pathEffect = dashEffect
-            )
+            drawLine(MonoBlack.copy(alpha = 0.5f), Offset(midX, topYPx), Offset(midX, bottomYPx), haloPx)
+            drawLine(MonoWhite.copy(alpha = 0.85f), Offset(midX, topYPx), Offset(midX, bottomYPx), 1.4.dp.toPx(), pathEffect = dashEffect)
 
-            // Top horizontal caliper bar
             drawLine(MonoBlack.copy(alpha = 0.6f), Offset(leftX, topYPx), Offset(rightX, topYPx), haloPx)
             drawLine(MonoWhite, Offset(leftX, topYPx), Offset(rightX, topYPx), strokePx)
 
-            // Bottom horizontal caliper bar
             drawLine(MonoBlack.copy(alpha = 0.6f), Offset(leftX, bottomYPx), Offset(rightX, bottomYPx), haloPx)
             drawLine(MonoWhite, Offset(leftX, bottomYPx), Offset(rightX, bottomYPx), strokePx)
 
-            // Architectural end ticks
             val tick = 10.dp.toPx()
             drawLine(MonoWhite, Offset(leftX, topYPx), Offset(leftX, topYPx + tick), strokePx)
             drawLine(MonoWhite, Offset(rightX, topYPx), Offset(rightX, topYPx + tick), strokePx)
@@ -95,7 +76,6 @@ fun CaliperOverlay(
             drawLine(MonoWhite, Offset(rightX, bottomYPx), Offset(rightX, bottomYPx - tick), strokePx)
         }
 
-        // Top streamlined drag handle pill (with icon)
         CaliperHandlePill(
             label = "頂端",
             modifier = Modifier
@@ -111,7 +91,6 @@ fun CaliperOverlay(
                 }
         )
 
-        // Bottom streamlined drag handle pill (with icon)
         CaliperHandlePill(
             label = "底端",
             modifier = Modifier

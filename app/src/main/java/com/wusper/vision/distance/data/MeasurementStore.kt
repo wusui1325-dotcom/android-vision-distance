@@ -1,9 +1,9 @@
-package com.monorange.app.data
+package com.wusper.vision.distance.data
 
 import android.content.Context
-import com.monorange.app.model.DistanceUnit
-import com.monorange.app.model.MeasurementMode
-import com.monorange.app.model.MeasurementRecord
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.MeasurementMode
+import com.wusper.vision.distance.model.MeasurementRecord
 import org.json.JSONArray
 import org.json.JSONObject
 

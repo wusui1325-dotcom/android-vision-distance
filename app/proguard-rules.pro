@@ -1,2 +1,2 @@
 # Keep MonoRange models
--keep class com.monorange.app.model.** { *; }
+-keep class com.wusper.vision.distance.model.** { *; }

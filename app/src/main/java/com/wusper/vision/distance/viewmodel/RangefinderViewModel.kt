@@ -1,19 +1,21 @@
-package com.monorange.app.viewmodel
+package com.wusper.vision.distance.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import com.monorange.app.data.MeasurementStore
-import com.monorange.app.engine.CameraIntrinsicsHelper
-import com.monorange.app.engine.DistanceCalculator
-import com.monorange.app.model.DistanceUnit
-import com.monorange.app.model.MeasurementMode
-import com.monorange.app.model.MeasurementRecord
-import com.monorange.app.model.RangefinderUiState
-import com.monorange.app.model.ReferencePreset
+import com.wusper.vision.distance.data.MeasurementStore
+import com.wusper.vision.distance.engine.CameraIntrinsicsHelper
+import com.wusper.vision.distance.engine.DistanceCalculator
+import com.wusper.vision.distance.model.DistanceUnit
+import com.wusper.vision.distance.model.GroundAnchorPoint
+import com.wusper.vision.distance.model.MeasurementMode
+import com.wusper.vision.distance.model.MeasurementRecord
+import com.wusper.vision.distance.model.RangefinderUiState
+import com.wusper.vision.distance.model.ReferencePreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.math.abs
 
 class RangefinderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -34,13 +36,14 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
     )
     val uiState: StateFlow<RangefinderUiState> = _uiState.asStateFlow()
 
-    fun onSensorUpdate(rawPitchDeg: Float, rawRollDeg: Float) {
+    fun onSensorUpdate(rawPitchDeg: Float, rawRollDeg: Float, rawAzimuthDeg: Float) {
         _uiState.update { state ->
             if (state.isLocked) return@update state
             val adjustedPitch = rawPitchDeg - state.pitchOffsetDeg
             val updated = state.copy(
                 pitchDeg = adjustedPitch,
-                rollDeg = rawRollDeg
+                rollDeg = rawRollDeg,
+                azimuthDeg = rawAzimuthDeg
             )
             recomputeMeasurements(updated)
         }
@@ -198,6 +201,74 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /**
+     * Two-point distance mode: manually set Start Point A from camera center crosshair.
+     */
+    fun setStartPointA() {
+        _uiState.update { state ->
+            val radial = DistanceCalculator.calculateGroundDistance(
+                cameraHeightMeters = state.cameraHeightMeters,
+                pitchFromHorizontalDeg = state.pitchDeg
+            ) ?: return@update state.copy(statusBanner = "請將相機中心向下瞄準地面起點 A")
+
+            val anchorA = GroundAnchorPoint(
+                radialDistanceMeters = radial,
+                azimuthDeg = state.azimuthDeg,
+                pitchDeg = state.pitchDeg
+            )
+            recomputeMeasurements(
+                state.copy(
+                    startPointA = anchorA,
+                    endPointB = null,
+                    isLocked = false,
+                    statusBanner = "已設定起點 A，請移動準星瞄準終點 B"
+                )
+            )
+        }
+    }
+
+    /**
+     * Two-point distance mode: manually set End Point B from camera center crosshair.
+     */
+    fun setEndPointB() {
+        _uiState.update { state ->
+            val anchorA = state.startPointA
+                ?: return@update state.copy(statusBanner = "請先設定起始點 A")
+            val radial = DistanceCalculator.calculateGroundDistance(
+                cameraHeightMeters = state.cameraHeightMeters,
+                pitchFromHorizontalDeg = state.pitchDeg
+            ) ?: return@update state.copy(statusBanner = "請將相機中心向下瞄準地面終點 B")
+
+            val anchorB = GroundAnchorPoint(
+                radialDistanceMeters = radial,
+                azimuthDeg = state.azimuthDeg,
+                pitchDeg = state.pitchDeg
+            )
+            val abDist = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, anchorB)
+            val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, anchorB.azimuthDeg))
+            state.copy(
+                endPointB = anchorB,
+                liveDistanceMeters = abDist,
+                twoPointDeltaAngleDeg = deltaAng,
+                statusBanner = "已鎖定 A → B 兩點距離，可點擊儲存"
+            )
+        }
+    }
+
+    fun clearTwoPoints() {
+        _uiState.update { state ->
+            recomputeMeasurements(
+                state.copy(
+                    startPointA = null,
+                    endPointB = null,
+                    twoPointDeltaAngleDeg = null,
+                    isLocked = false,
+                    statusBanner = "已清除起點 A 與終點 B"
+                )
+            )
+        }
+    }
+
     fun lockBaseForHeight() {
         _uiState.update { state ->
             val groundDist = DistanceCalculator.calculateGroundDistance(
@@ -223,6 +294,9 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                 state.copy(
                     isLocked = false,
                     baseLockedDistanceMeters = null,
+                    startPointA = null,
+                    endPointB = null,
+                    twoPointDeltaAngleDeg = null,
                     caliperTopFraction = 0.28f,
                     caliperBottomFraction = 0.72f,
                     statusBanner = null
@@ -246,7 +320,17 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                 } else null,
                 pitchDeg = state.pitchDeg,
                 note = when (state.mode) {
-                    MeasurementMode.GROUND_PITCH -> "鏡頭高度 ${String.format("%.2f", state.cameraHeightMeters)}m"
+                    MeasurementMode.GROUND_PITCH -> "機高 ${String.format("%.2f", state.cameraHeightMeters)}m"
+                    MeasurementMode.TWO_POINT -> {
+                        val a = state.startPointA?.radialDistanceMeters
+                        val b = state.endPointB?.radialDistanceMeters ?: state.liveCursorGroundDistanceMeters
+                        val ang = state.twoPointDeltaAngleDeg
+                        if (a != null && b != null && ang != null) {
+                            String.format("A %.2fm → B %.2fm (Δ%.1f°)", a, b, ang)
+                        } else {
+                            "兩點間測距"
+                        }
+                    }
                     MeasurementMode.OBJECT_REF -> "參考：${state.selectedPreset.label}"
                     MeasurementMode.HEIGHT_MEASURE -> "兩點測高"
                 }
@@ -285,6 +369,50 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                     pitchFromHorizontalDeg = state.pitchDeg
                 )
                 state.copy(liveDistanceMeters = dist, liveHeightMeters = null)
+            }
+
+            MeasurementMode.TWO_POINT -> {
+                val cursorDist = DistanceCalculator.calculateGroundDistance(
+                    cameraHeightMeters = state.cameraHeightMeters,
+                    pitchFromHorizontalDeg = state.pitchDeg
+                )
+                val anchorA = state.startPointA
+                val anchorB = state.endPointB
+                when {
+                    anchorA != null && anchorB != null -> {
+                        val ab = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, anchorB)
+                        val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, anchorB.azimuthDeg))
+                        state.copy(
+                            liveCursorGroundDistanceMeters = cursorDist,
+                            liveDistanceMeters = ab,
+                            twoPointDeltaAngleDeg = deltaAng,
+                            liveHeightMeters = null
+                        )
+                    }
+                    anchorA != null && cursorDist != null -> {
+                        val liveB = GroundAnchorPoint(
+                            radialDistanceMeters = cursorDist,
+                            azimuthDeg = state.azimuthDeg,
+                            pitchDeg = state.pitchDeg
+                        )
+                        val liveAB = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, liveB)
+                        val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, state.azimuthDeg))
+                        state.copy(
+                            liveCursorGroundDistanceMeters = cursorDist,
+                            liveDistanceMeters = liveAB,
+                            twoPointDeltaAngleDeg = deltaAng,
+                            liveHeightMeters = null
+                        )
+                    }
+                    else -> {
+                        state.copy(
+                            liveCursorGroundDistanceMeters = cursorDist,
+                            liveDistanceMeters = cursorDist,
+                            twoPointDeltaAngleDeg = null,
+                            liveHeightMeters = null
+                        )
+                    }
+                }
             }
 
             MeasurementMode.OBJECT_REF -> {
