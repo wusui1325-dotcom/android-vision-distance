@@ -202,8 +202,20 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
-     * Two-point distance mode: manually set Start Point A from camera center crosshair.
+     * Unified single-button cycle in TWO_POINT mode:
+     * 1) No start point -> set Start Point A
+     * 2) Start A set, no End B -> set End Point B AND auto-save record
+     * 3) Both A & B set -> clear both points to start fresh
      */
+    fun handleTwoPointPrimaryAction() {
+        val cur = _uiState.value
+        when {
+            cur.startPointA == null -> setStartPointA()
+            cur.endPointB == null -> setEndPointB()
+            else -> clearTwoPoints()
+        }
+    }
+
     fun setStartPointA() {
         _uiState.update { state ->
             val radial = DistanceCalculator.calculateGroundDistance(
@@ -221,14 +233,14 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                     startPointA = anchorA,
                     endPointB = null,
                     isLocked = false,
-                    statusBanner = "已設定起點 A，請移動準星瞄準終點 B"
+                    statusBanner = "已設定起點 A，移動準星瞄準終點 B"
                 )
             )
         }
     }
 
     /**
-     * Two-point distance mode: manually set End Point B from camera center crosshair.
+     * Sets End Point B and automatically persists the A -> B distance to history.
      */
     fun setEndPointB() {
         _uiState.update { state ->
@@ -246,11 +258,26 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
             )
             val abDist = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, anchorB)
             val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, anchorB.azimuthDeg))
+
+            val now = System.currentTimeMillis()
+            val record = MeasurementRecord(
+                id = now,
+                timestampMs = now,
+                mode = MeasurementMode.TWO_POINT,
+                distanceMeters = abDist,
+                heightMeters = null,
+                pitchDeg = state.pitchDeg,
+                note = String.format("A %.2fm → B %.2fm (Δ%.1f°)", anchorA.radialDistanceMeters, anchorB.radialDistanceMeters, deltaAng)
+            )
+            val updatedHistory = listOf(record) + state.history
+            store.saveHistory(updatedHistory)
+
             state.copy(
                 endPointB = anchorB,
                 liveDistanceMeters = abDist,
                 twoPointDeltaAngleDeg = deltaAng,
-                statusBanner = "已鎖定 A → B 兩點距離，可點擊儲存"
+                history = updatedHistory,
+                statusBanner = "已設定終點 B 並自動儲存紀錄"
             )
         }
     }
@@ -263,7 +290,7 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                     endPointB = null,
                     twoPointDeltaAngleDeg = null,
                     isLocked = false,
-                    statusBanner = "已清除起點 A 與終點 B"
+                    statusBanner = "已清除兩點，可重新設定起點 A"
                 )
             )
         }

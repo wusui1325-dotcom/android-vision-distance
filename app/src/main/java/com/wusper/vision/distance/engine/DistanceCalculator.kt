@@ -63,9 +63,31 @@ object DistanceCalculator {
     }
 
     /**
+     * Projects a captured GroundAnchorPoint onto normalized camera preview coordinates
+     * where (0.5f, 0.5f) is the screen center. Values outside [0f, 1f] indicate the anchor
+     * has moved off-screen as the user panned or tilted.
+     */
+    fun projectAnchorToScreenFraction(
+        anchor: GroundAnchorPoint,
+        currentAzimuthDeg: Float,
+        currentPitchDeg: Float,
+        horizontalFovDeg: Float,
+        verticalFovDeg: Float
+    ): Pair<Float, Float> {
+        val deltaAz = shortestAngleDeltaDeg(currentAzimuthDeg, anchor.azimuthDeg).coerceIn(-75f, 75f)
+        val deltaPitch = (anchor.pitchDeg - currentPitchDeg).coerceIn(-75f, 75f)
+
+        val halfHFovTan = tan(Math.toRadians((horizontalFovDeg.coerceIn(20f, 130f) / 2f).toDouble()))
+        val halfVFovTan = tan(Math.toRadians((verticalFovDeg.coerceIn(20f, 130f) / 2f).toDouble()))
+
+        val normX = (0.5 + 0.5 * (tan(Math.toRadians(deltaAz.toDouble())) / halfHFovTan)).toFloat()
+        val normY = (0.5 - 0.5 * (tan(Math.toRadians(deltaPitch.toDouble())) / halfVFovTan)).toFloat()
+
+        return normX.coerceIn(-1.5f, 2.5f) to normY.coerceIn(-1.5f, 2.5f)
+    }
+
+    /**
      * Two-point object height calculation:
-     * Given camera height H, locked horizontal distance D to base,
-     * and pitch angle alpha to object top (positive = above horizon, negative = below horizon):
      * height = H + D * tan(alpha)
      */
     fun calculateObjectHeight(
@@ -82,8 +104,6 @@ object DistanceCalculator {
 
     /**
      * Pinhole camera distance using known real-world object size and vertical caliper fraction.
-     * Full vertical scene height at distance D is: 2 * D * tan(verticalFov / 2)
-     * Therefore: D = (realSize / (2 * fraction * tan(verticalFov / 2))) * calibrationFactor
      */
     fun calculatePinholeDistance(
         realSizeMeters: Float,

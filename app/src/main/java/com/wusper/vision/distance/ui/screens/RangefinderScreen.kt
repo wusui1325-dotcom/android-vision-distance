@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Contrast
 import androidx.compose.material.icons.rounded.CreditCard
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.DoorFront
@@ -172,8 +173,37 @@ fun RangefinderScreen(
         when {
             state.startPointA == null -> "瞄準起始點 A"
             state.endPointB == null -> "瞄準結束點 B"
-            else -> "A→B 已鎖定"
+            else -> "A→B 已鎖定（再按清除）"
         }
+    } else null
+
+    val projectedA = if (state.mode == MeasurementMode.TWO_POINT) {
+        state.startPointA?.let { anchorA ->
+            DistanceCalculator.projectAnchorToScreenFraction(
+                anchor = anchorA,
+                currentAzimuthDeg = state.azimuthDeg,
+                currentPitchDeg = state.pitchDeg,
+                horizontalFovDeg = state.intrinsics.horizontalFovDeg,
+                verticalFovDeg = state.intrinsics.verticalFovDeg
+            )
+        }
+    } else null
+
+    val projectedB = if (state.mode == MeasurementMode.TWO_POINT) {
+        state.endPointB?.let { anchorB ->
+            DistanceCalculator.projectAnchorToScreenFraction(
+                anchor = anchorB,
+                currentAzimuthDeg = state.azimuthDeg,
+                currentPitchDeg = state.pitchDeg,
+                horizontalFovDeg = state.intrinsics.horizontalFovDeg,
+                verticalFovDeg = state.intrinsics.verticalFovDeg
+            )
+        }
+    } else null
+
+    val twoPointLineLabel = if (state.mode == MeasurementMode.TWO_POINT && state.startPointA != null) {
+        val (dVal, dUnit) = DistanceCalculator.formatDistance(state.liveDistanceMeters, state.unit)
+        "$dVal $dUnit"
     } else null
 
     Box(
@@ -197,7 +227,10 @@ fun RangefinderScreen(
                 rollDeg = state.rollDeg,
                 showGrid = state.showGrid,
                 isLocked = state.isLocked || (state.mode == MeasurementMode.TWO_POINT && state.endPointB != null),
-                pointStageLabel = twoPointStageLabel
+                pointStageLabel = twoPointStageLabel,
+                projectedPointA = projectedA,
+                projectedPointB = projectedB,
+                twoPointDistanceLabel = twoPointLineLabel
             )
         }
 
@@ -288,13 +321,7 @@ fun RangefinderScreen(
                 onPrimaryAction = {
                     hapticClick()
                     when (state.mode) {
-                        MeasurementMode.TWO_POINT -> {
-                            when {
-                                state.startPointA == null -> viewModel.setStartPointA()
-                                state.endPointB == null -> viewModel.setEndPointB()
-                                else -> viewModel.saveCurrentMeasurement()
-                            }
-                        }
+                        MeasurementMode.TWO_POINT -> viewModel.handleTwoPointPrimaryAction()
                         MeasurementMode.HEIGHT_MEASURE -> {
                             if (state.baseLockedDistanceMeters == null) {
                                 viewModel.lockBaseForHeight()
@@ -454,9 +481,9 @@ private fun DistanceReadoutCard(state: RangefinderUiState) {
 
     val headerHint = if (state.mode == MeasurementMode.TWO_POINT) {
         when {
-            state.startPointA == null -> "兩點測距 · 瞄準起點 A 後點擊設定"
-            state.endPointB == null -> "兩點測距 · 移動準星瞄準終點 B（即時 A→B）"
-            else -> "兩點測距 · A → B 距離已鎖定"
+            state.startPointA == null -> "兩點測距 · 按設定鍵標記起點 A"
+            state.endPointB == null -> "兩點測距 · 移動準星對準終點 B 再按設定鍵"
+            else -> "兩點測距 · 已自動儲存，再按設定鍵清除重測"
         }
     } else {
         "${state.mode.label} · ${state.mode.shortHint}"
@@ -774,9 +801,9 @@ private fun BottomActionDock(
 
     val (primaryIcon, primaryDesc) = when (state.mode) {
         MeasurementMode.TWO_POINT -> when {
-            state.startPointA == null -> Icons.Rounded.TripOrigin to "設定起始點 A"
-            state.endPointB == null -> Icons.Rounded.Adjust to "設定結束點 B"
-            else -> Icons.Rounded.CenterFocusStrong to "儲存兩點測距"
+            state.startPointA == null -> Icons.Rounded.TripOrigin to "設定起點 A"
+            state.endPointB == null -> Icons.Rounded.Adjust to "設定終點 B 並儲存"
+            else -> Icons.Rounded.DeleteOutline to "清除已有的兩點"
         }
         MeasurementMode.HEIGHT_MEASURE -> if (state.baseLockedDistanceMeters == null) {
             Icons.Rounded.MyLocation to "鎖定底部距離"

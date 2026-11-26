@@ -5,6 +5,7 @@ import com.wusper.vision.distance.model.GroundAnchorPoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DistanceCalculatorTest {
@@ -51,8 +52,32 @@ class DistanceCalculatorTest {
         val pointA = GroundAnchorPoint(radialDistanceMeters = 4.0f, azimuthDeg = 350f, pitchDeg = -20f)
         val pointB = GroundAnchorPoint(radialDistanceMeters = 4.0f, azimuthDeg = 10f, pitchDeg = -20f)
         val ab = DistanceCalculator.calculateTwoPointGroundDistance(pointA, pointB)
-        // 2 * 4 * sin(10 deg) ~= 1.389m
         assertEquals(1.39f, ab, 0.02f)
+    }
+
+    @Test
+    fun projectAnchorToScreenFraction_centeredAndPanned_behavesCorrectly() {
+        val anchor = GroundAnchorPoint(radialDistanceMeters = 3.0f, azimuthDeg = 0f, pitchDeg = -30f)
+        val (cx, cy) = DistanceCalculator.projectAnchorToScreenFraction(
+            anchor = anchor,
+            currentAzimuthDeg = 0f,
+            currentPitchDeg = -30f,
+            horizontalFovDeg = 60f,
+            verticalFovDeg = 80f
+        )
+        assertEquals(0.5f, cx, 0.001f)
+        assertEquals(0.5f, cy, 0.001f)
+
+        // Pan camera right (+15 deg) and tilt up (-20 deg): anchor should shift left (<0.5) and down (>0.5)
+        val (px, py) = DistanceCalculator.projectAnchorToScreenFraction(
+            anchor = anchor,
+            currentAzimuthDeg = 15f,
+            currentPitchDeg = -20f,
+            horizontalFovDeg = 60f,
+            verticalFovDeg = 80f
+        )
+        assertTrue(px < 0.5f)
+        assertTrue(py > 0.5f)
     }
 
     @Test
