@@ -42,10 +42,47 @@ data class CameraIntrinsics(
     val horizontalFovDeg: Float = 52.0f
 )
 
+data class Vec3(
+    val x: Float,
+    val y: Float,
+    val z: Float
+)
+
 /**
- * A ground-plane anchor point captured via camera center crosshair + IMU orientation.
+ * Immutable 3x3 row-major rotation matrix mapping device coordinates -> world coordinates.
+ * Using primitive fields ensures clean structural equality in Compose StateFlow.
+ */
+data class RotationMatrix3x3(
+    val m00: Float = 1f, val m01: Float = 0f, val m02: Float = 0f,
+    val m10: Float = 0f, val m11: Float = 0f, val m12: Float = -1f,
+    val m20: Float = 0f, val m21: Float = 1f, val m22: Float = 0f
+) {
+    fun transformDeviceToWorld(v: Vec3): Vec3 = Vec3(
+        x = m00 * v.x + m01 * v.y + m02 * v.z,
+        y = m10 * v.x + m11 * v.y + m12 * v.z,
+        z = m20 * v.x + m21 * v.y + m22 * v.z
+    )
+
+    fun transformWorldToDevice(v: Vec3): Vec3 = Vec3(
+        x = m00 * v.x + m10 * v.y + m20 * v.z,
+        y = m01 * v.x + m11 * v.y + m21 * v.z,
+        z = m02 * v.x + m12 * v.y + m22 * v.z
+    )
+
+    companion object {
+        fun fromFloatArray(a: FloatArray): RotationMatrix3x3 = RotationMatrix3x3(
+            a[0], a[1], a[2],
+            a[3], a[4], a[5],
+            a[6], a[7], a[8]
+        )
+    }
+}
+
+/**
+ * A 3D ground-plane anchor point in world coordinates relative to the camera origin (0, 0, 0).
  */
 data class GroundAnchorPoint(
+    val worldPos: Vec3,
     val radialDistanceMeters: Float,
     val azimuthDeg: Float,
     val pitchDeg: Float
@@ -70,10 +107,11 @@ data class RangefinderUiState(
     val isLocked: Boolean = false,
     val hapticEnabled: Boolean = true,
 
-    // Live sensor telemetry
+    // Live sensor telemetry (smoothed for display) + unlagged 3D rotation matrix for visual projection
     val pitchDeg: Float = -25f,
     val rollDeg: Float = 0f,
     val azimuthDeg: Float = 0f,
+    val rotationMatrix: RotationMatrix3x3 = RotationMatrix3x3(),
     val pitchOffsetDeg: Float = 0f,
     val smoothingAlpha: Float = 0.18f,
 
@@ -94,6 +132,7 @@ data class RangefinderUiState(
     // Two-point ground distance (A -> B) state
     val startPointA: GroundAnchorPoint? = null,
     val endPointB: GroundAnchorPoint? = null,
+    val liveCursorWorldPos: Vec3? = null,
     val twoPointDeltaAngleDeg: Float? = null,
     val liveCursorGroundDistanceMeters: Float? = null,
 

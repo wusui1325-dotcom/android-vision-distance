@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.LinearScale
+import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.TripOrigin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -34,14 +36,21 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.wusper.vision.distance.engine.DistanceCalculator
+import com.wusper.vision.distance.engine.ProjectedPoint2D
+import com.wusper.vision.distance.model.CameraIntrinsics
+import com.wusper.vision.distance.model.RotationMatrix3x3
+import com.wusper.vision.distance.model.Vec3
 import com.wusper.vision.distance.ui.theme.MonoBlack
 import com.wusper.vision.distance.ui.theme.MonoWhite
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 /**
  * Precision monochrome crosshair, horizon level wings, optional grid,
- * and real-time dashed line + A/B anchor markers for Two-Point mode.
+ * and 3D world-locked dashed line + A/B anchor markers (with FILL_CENTER FOV compensation,
+ * 3D near-plane segment clipping, and off-screen edge direction indicators).
  */
 @Composable
 fun ReticleOverlay(
@@ -49,8 +58,13 @@ fun ReticleOverlay(
     showGrid: Boolean,
     isLocked: Boolean,
     pointStageLabel: String? = null,
-    projectedPointA: Pair<Float, Float>? = null,
-    projectedPointB: Pair<Float, Float>? = null,
+    worldPointA: Vec3? = null,
+    worldPointB: Vec3? = null,
+    liveCursorWorldPos: Vec3? = null,
+    rotationMatrix: RotationMatrix3x3 = RotationMatrix3x3(),
+    intrinsics: CameraIntrinsics = CameraIntrinsics(),
+    focalCalibrationFactor: Float = 1.0f,
+    pitchOffsetDeg: Float = 0f,
     twoPointDistanceLabel: String? = null,
     modifier: Modifier = Modifier
 ) {
@@ -60,20 +74,43 @@ fun ReticleOverlay(
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val heightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-        val centerOffset = Offset(widthPx / 2f, heightPx / 2f)
 
-        val pointAOffset = projectedPointA?.let { (nx, ny) ->
-            Offset(nx * widthPx, ny * heightPx)
+        val projA: ProjectedPoint2D? = worldPointA?.let {
+            DistanceCalculator.projectWorldPointToScreen(
+                worldPos = it,
+                rotationMatrix = rotationMatrix,
+                intrinsics = intrinsics,
+                viewWidthPx = widthPx,
+                viewHeightPx = heightPx,
+                focalCalibrationFactor = focalCalibrationFactor,
+                pitchOffsetDeg = pitchOffsetDeg
+            )
         }
-        val pointBOffset = projectedPointB?.let { (nx, ny) ->
-            Offset(nx * widthPx, ny * heightPx)
+        val projB: ProjectedPoint2D? = worldPointB?.let {
+            DistanceCalculator.projectWorldPointToScreen(
+                worldPos = it,
+                rotationMatrix = rotationMatrix,
+                intrinsics = intrinsics,
+                viewWidthPx = widthPx,
+                viewHeightPx = heightPx,
+                focalCalibrationFactor = focalCalibrationFactor,
+                pitchOffsetDeg = pitchOffsetDeg
+            )
         }
-        // In two-point mode, dashed line connects A -> B (when both set) or A -> live crosshair center
-        val lineEndOffset = when {
-            pointAOffset != null && pointBOffset != null -> pointBOffset
-            pointAOffset != null -> centerOffset
-            else -> null
-        }
+
+        val segmentEndWorld: Vec3? = worldPointB ?: liveCursorWorldPos
+        val clippedLine = if (worldPointA != null && segmentEndWorld != null) {
+            DistanceCalculator.projectWorldSegmentClipped(
+                worldA = worldPointA,
+                worldB = segmentEndWorld,
+                rotationMatrix = rotationMatrix,
+                intrinsics = intrinsics,
+                viewWidthPx = widthPx,
+                viewHeightPx = heightPx,
+                focalCalibrationFactor = focalCalibrationFactor,
+                pitchOffsetDeg = pitchOffsetDeg
+            )
+        } else null
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val cx = size.width / 2f
@@ -93,37 +130,43 @@ fun ReticleOverlay(
             val haloColor = MonoBlack.copy(alpha = 0.58f)
             val lineColor = if (isLocked) MonoWhite else MonoWhite.copy(alpha = 0.94f)
 
-            // Real-time dashed line between Point A and Point B (or live camera center)
-            if (pointAOffset != null && lineEndOffset != null) {
+            // 3D near-plane-clipped monochrome dashed line
+            if (clippedLine != null) {
+                val start = Offset(clippedLine.startX, clippedLine.startY)
+                val end = Offset(clippedLine.endX, clippedLine.endY)
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 12f), 0f)
                 drawLine(
                     color = haloColor,
-                    start = pointAOffset,
-                    end = lineEndOffset,
+                    start = start,
+                    end = end,
                     strokeWidth = 4.2.dp.toPx(),
                     cap = StrokeCap.Round,
                     pathEffect = dashEffect
                 )
                 drawLine(
                     color = MonoWhite,
-                    start = pointAOffset,
-                    end = lineEndOffset,
+                    start = start,
+                    end = end,
                     strokeWidth = 2.0.dp.toPx(),
                     cap = StrokeCap.Round,
                     pathEffect = dashEffect
                 )
+            }
 
-                // Point A anchor ring + solid dot
-                drawCircle(color = haloColor, radius = 11.dp.toPx(), center = pointAOffset, style = Stroke(width = 3.5.dp.toPx()))
-                drawCircle(color = MonoWhite, radius = 11.dp.toPx(), center = pointAOffset, style = Stroke(width = 1.8.dp.toPx()))
-                drawCircle(color = MonoWhite, radius = 4.5.dp.toPx(), center = pointAOffset)
+            // Point A anchor ring + solid dot (only when in front of camera)
+            if (projA != null && projA.isInFront) {
+                val ptA = Offset(projA.normX * size.width, projA.normY * size.height)
+                drawCircle(color = haloColor, radius = 11.dp.toPx(), center = ptA, style = Stroke(width = 3.5.dp.toPx()))
+                drawCircle(color = MonoWhite, radius = 11.dp.toPx(), center = ptA, style = Stroke(width = 1.8.dp.toPx()))
+                drawCircle(color = MonoWhite, radius = 4.5.dp.toPx(), center = ptA)
+            }
 
-                // Point B anchor ring + solid dot when locked
-                if (pointBOffset != null) {
-                    drawCircle(color = haloColor, radius = 11.dp.toPx(), center = pointBOffset, style = Stroke(width = 3.5.dp.toPx()))
-                    drawCircle(color = MonoWhite, radius = 11.dp.toPx(), center = pointBOffset, style = Stroke(width = 1.8.dp.toPx()))
-                    drawCircle(color = MonoWhite, radius = 4.5.dp.toPx(), center = pointBOffset)
-                }
+            // Point B anchor ring + solid dot (only when in front of camera)
+            if (projB != null && projB.isInFront) {
+                val ptB = Offset(projB.normX * size.width, projB.normY * size.height)
+                drawCircle(color = haloColor, radius = 11.dp.toPx(), center = ptB, style = Stroke(width = 3.5.dp.toPx()))
+                drawCircle(color = MonoWhite, radius = 11.dp.toPx(), center = ptB, style = Stroke(width = 1.8.dp.toPx()))
+                drawCircle(color = MonoWhite, radius = 4.5.dp.toPx(), center = ptB)
             }
 
             val outerRadius = 34.dp.toPx()
@@ -182,41 +225,35 @@ fun ReticleOverlay(
             drawLine(bColor, Offset(size.width - bracketMargin, bracketMargin), Offset(size.width - bracketMargin, bracketMargin + bracketLen), bStroke)
         }
 
-        // Floating "A" badge near projected Point A (when on screen)
-        if (pointAOffset != null && pointAOffset.x in 0f..widthPx && pointAOffset.y in 0f..heightPx) {
-            AnchorTagPill(
-                text = "A",
-                modifier = Modifier.offset {
-                    IntOffset(
-                        (pointAOffset.x - with(density) { 14.dp.toPx() }).roundToInt(),
-                        (pointAOffset.y - with(density) { 34.dp.toPx() }).roundToInt()
-                    )
-                }
+        // Point A badge (on-screen) or edge direction indicator (off-screen)
+        if (projA != null) {
+            AnchorOrEdgeIndicator(
+                label = "A",
+                projected = projA,
+                widthPx = widthPx,
+                heightPx = heightPx
             )
         }
 
-        // Floating "B" badge near projected Point B (when on screen)
-        if (pointBOffset != null && pointBOffset.x in 0f..widthPx && pointBOffset.y in 0f..heightPx) {
-            AnchorTagPill(
-                text = "B",
-                modifier = Modifier.offset {
-                    IntOffset(
-                        (pointBOffset.x - with(density) { 14.dp.toPx() }).roundToInt(),
-                        (pointBOffset.y - with(density) { 34.dp.toPx() }).roundToInt()
-                    )
-                }
+        // Point B badge (on-screen) or edge direction indicator (off-screen)
+        if (projB != null) {
+            AnchorOrEdgeIndicator(
+                label = "B",
+                projected = projB,
+                widthPx = widthPx,
+                heightPx = heightPx
             )
         }
 
-        // Live midpoint distance pill on the dashed line
-        if (pointAOffset != null && lineEndOffset != null && !twoPointDistanceLabel.isNullOrBlank()) {
-            val midX = ((pointAOffset.x + lineEndOffset.x) / 2f).coerceIn(widthPx * 0.16f, widthPx * 0.84f)
-            val midY = ((pointAOffset.y + lineEndOffset.y) / 2f).coerceIn(heightPx * 0.28f, heightPx * 0.68f)
+        // Midpoint distance pill on the visible portion of the dashed line
+        if (clippedLine != null && !twoPointDistanceLabel.isNullOrBlank()) {
+            val midX = ((clippedLine.startX + clippedLine.endX) / 2f).coerceIn(widthPx * 0.18f, widthPx * 0.82f)
+            val midY = ((clippedLine.startY + clippedLine.endY) / 2f).coerceIn(heightPx * 0.30f, heightPx * 0.66f)
             Row(
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            (midX - with(density) { 42.dp.toPx() }).roundToInt(),
+                            (midX - with(density) { 44.dp.toPx() }).roundToInt(),
                             (midY - with(density) { 14.dp.toPx() }).roundToInt()
                         )
                     }
@@ -275,22 +312,72 @@ fun ReticleOverlay(
 }
 
 @Composable
-private fun AnchorTagPill(
-    text: String,
-    modifier: Modifier = Modifier
+private fun AnchorOrEdgeIndicator(
+    label: String,
+    projected: ProjectedPoint2D,
+    widthPx: Float,
+    heightPx: Float
 ) {
-    Box(
-        modifier = modifier
-            .size(26.dp)
-            .clip(CircleShape)
-            .background(MonoWhite)
-            .border(1.5.dp, MonoBlack, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MonoBlack
-        )
+    val density = LocalDensity.current
+    if (projected.isOnScreen) {
+        val x = projected.normX * widthPx
+        val y = projected.normY * heightPx
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        (x - with(density) { 13.dp.toPx() }).roundToInt(),
+                        (y - with(density) { 36.dp.toPx() }).roundToInt()
+                    )
+                }
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(MonoWhite)
+                .border(1.5.dp, MonoBlack, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MonoBlack
+            )
+        }
+    } else {
+        // Off-screen: clamp badge cleanly inside viewport margins and rotate arrow toward anchor
+        val dx = projected.normX - 0.5f
+        val dy = projected.normY - 0.5f
+        val angleDeg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+        val clampedX = (projected.normX * widthPx).coerceIn(widthPx * 0.08f, widthPx * 0.84f)
+        val clampedY = (projected.normY * heightPx).coerceIn(heightPx * 0.28f, heightPx * 0.68f)
+
+        Row(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        (clampedX - with(density) { 20.dp.toPx() }).roundToInt(),
+                        (clampedY - with(density) { 14.dp.toPx() }).roundToInt()
+                    )
+                }
+                .clip(CircleShape)
+                .background(MonoBlack.copy(alpha = 0.88f))
+                .border(1.dp, MonoWhite, CircleShape)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Navigation,
+                contentDescription = "錨點 $label 方向",
+                tint = MonoWhite,
+                modifier = Modifier
+                    .size(13.dp)
+                    .rotate(angleDeg)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MonoWhite
+            )
+        }
     }
 }

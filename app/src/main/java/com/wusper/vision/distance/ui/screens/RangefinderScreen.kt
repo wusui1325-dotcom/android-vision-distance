@@ -133,8 +133,8 @@ fun RangefinderScreen(
     }
 
     val sensorManager = remember(context) {
-        OrientationSensorManager(context) { pitch, roll, azimuth ->
-            viewModel.onSensorUpdate(pitch, roll, azimuth)
+        OrientationSensorManager(context) { pitch, roll, azimuth, matrix ->
+            viewModel.onSensorUpdate(pitch, roll, azimuth, matrix)
         }
     }
     LaunchedEffect(state.smoothingAlpha) {
@@ -177,30 +177,6 @@ fun RangefinderScreen(
         }
     } else null
 
-    val projectedA = if (state.mode == MeasurementMode.TWO_POINT) {
-        state.startPointA?.let { anchorA ->
-            DistanceCalculator.projectAnchorToScreenFraction(
-                anchor = anchorA,
-                currentAzimuthDeg = state.azimuthDeg,
-                currentPitchDeg = state.pitchDeg,
-                horizontalFovDeg = state.intrinsics.horizontalFovDeg,
-                verticalFovDeg = state.intrinsics.verticalFovDeg
-            )
-        }
-    } else null
-
-    val projectedB = if (state.mode == MeasurementMode.TWO_POINT) {
-        state.endPointB?.let { anchorB ->
-            DistanceCalculator.projectAnchorToScreenFraction(
-                anchor = anchorB,
-                currentAzimuthDeg = state.azimuthDeg,
-                currentPitchDeg = state.pitchDeg,
-                horizontalFovDeg = state.intrinsics.horizontalFovDeg,
-                verticalFovDeg = state.intrinsics.verticalFovDeg
-            )
-        }
-    } else null
-
     val twoPointLineLabel = if (state.mode == MeasurementMode.TWO_POINT && state.startPointA != null) {
         val (dVal, dUnit) = DistanceCalculator.formatDistance(state.liveDistanceMeters, state.unit)
         "$dVal $dUnit"
@@ -228,8 +204,13 @@ fun RangefinderScreen(
                 showGrid = state.showGrid,
                 isLocked = state.isLocked || (state.mode == MeasurementMode.TWO_POINT && state.endPointB != null),
                 pointStageLabel = twoPointStageLabel,
-                projectedPointA = projectedA,
-                projectedPointB = projectedB,
+                worldPointA = if (state.mode == MeasurementMode.TWO_POINT) state.startPointA?.worldPos else null,
+                worldPointB = if (state.mode == MeasurementMode.TWO_POINT) state.endPointB?.worldPos else null,
+                liveCursorWorldPos = if (state.mode == MeasurementMode.TWO_POINT) state.liveCursorWorldPos else null,
+                rotationMatrix = state.rotationMatrix,
+                intrinsics = state.intrinsics,
+                focalCalibrationFactor = state.focalCalibrationFactor,
+                pitchOffsetDeg = state.pitchOffsetDeg,
                 twoPointDistanceLabel = twoPointLineLabel
             )
         }

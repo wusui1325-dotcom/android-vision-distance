@@ -11,11 +11,13 @@ import com.wusper.vision.distance.model.MeasurementMode
 import com.wusper.vision.distance.model.MeasurementRecord
 import com.wusper.vision.distance.model.RangefinderUiState
 import com.wusper.vision.distance.model.ReferencePreset
+import com.wusper.vision.distance.model.RotationMatrix3x3
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.abs
+import kotlin.math.hypot
 
 class RangefinderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,14 +38,26 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
     )
     val uiState: StateFlow<RangefinderUiState> = _uiState.asStateFlow()
 
-    fun onSensorUpdate(rawPitchDeg: Float, rawRollDeg: Float, rawAzimuthDeg: Float) {
+    fun onSensorUpdate(
+        rawPitchDeg: Float,
+        rawRollDeg: Float,
+        rawAzimuthDeg: Float,
+        rotationMatrix: RotationMatrix3x3
+    ) {
         _uiState.update { state ->
-            if (state.isLocked) return@update state
+            // Always update rotationMatrix so 3D projected anchors stay glued to the real world even when locked
             val adjustedPitch = rawPitchDeg - state.pitchOffsetDeg
+            if (state.isLocked) {
+                return@update state.copy(
+                    rollDeg = rawRollDeg,
+                    rotationMatrix = rotationMatrix
+                )
+            }
             val updated = state.copy(
                 pitchDeg = adjustedPitch,
                 rollDeg = rawRollDeg,
-                azimuthDeg = rawAzimuthDeg
+                azimuthDeg = rawAzimuthDeg,
+                rotationMatrix = rotationMatrix
             )
             recomputeMeasurements(updated)
         }
@@ -201,12 +215,6 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    /**
-     * Unified single-button cycle in TWO_POINT mode:
-     * 1) No start point -> set Start Point A
-     * 2) Start A set, no End B -> set End Point B AND auto-save record
-     * 3) Both A & B set -> clear both points to start fresh
-     */
     fun handleTwoPointPrimaryAction() {
         val cur = _uiState.value
         when {
@@ -218,12 +226,15 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setStartPointA() {
         _uiState.update { state ->
-            val radial = DistanceCalculator.calculateGroundDistance(
+            val worldHit = DistanceCalculator.raycastGroundPoint3D(
+                rotationMatrix = state.rotationMatrix,
                 cameraHeightMeters = state.cameraHeightMeters,
-                pitchFromHorizontalDeg = state.pitchDeg
+                pitchOffsetDeg = state.pitchOffsetDeg
             ) ?: return@update state.copy(statusBanner = "請將相機中心向下瞄準地面起點 A")
 
+            val radial = hypot(worldHit.x.toDouble(), worldHit.y.toDouble()).toFloat()
             val anchorA = GroundAnchorPoint(
+                worldPos = worldHit,
                 radialDistanceMeters = radial,
                 azimuthDeg = state.azimuthDeg,
                 pitchDeg = state.pitchDeg
@@ -239,19 +250,19 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    /**
-     * Sets End Point B and automatically persists the A -> B distance to history.
-     */
     fun setEndPointB() {
         _uiState.update { state ->
             val anchorA = state.startPointA
                 ?: return@update state.copy(statusBanner = "請先設定起始點 A")
-            val radial = DistanceCalculator.calculateGroundDistance(
+            val worldHit = DistanceCalculator.raycastGroundPoint3D(
+                rotationMatrix = state.rotationMatrix,
                 cameraHeightMeters = state.cameraHeightMeters,
-                pitchFromHorizontalDeg = state.pitchDeg
+                pitchOffsetDeg = state.pitchOffsetDeg
             ) ?: return@update state.copy(statusBanner = "請將相機中心向下瞄準地面終點 B")
 
+            val radial = hypot(worldHit.x.toDouble(), worldHit.y.toDouble()).toFloat()
             val anchorB = GroundAnchorPoint(
+                worldPos = worldHit,
                 radialDistanceMeters = radial,
                 azimuthDeg = state.azimuthDeg,
                 pitchDeg = state.pitchDeg
@@ -399,10 +410,12 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             MeasurementMode.TWO_POINT -> {
-                val cursorDist = DistanceCalculator.calculateGroundDistance(
+                val cursorWorld = DistanceCalculator.raycastGroundPoint3D(
+                    rotationMatrix = state.rotationMatrix,
                     cameraHeightMeters = state.cameraHeightMeters,
-                    pitchFromHorizontalDeg = state.pitchDeg
+                    pitchOffsetDeg = state.pitchOffsetDeg
                 )
+                val cursorDist = cursorWorld?.let { hypot(it.x.toDouble(), it.y.toDouble()).toFloat() }
                 val anchorA = state.startPointA
                 val anchorB = state.endPointB
                 when {
@@ -410,21 +423,18 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                         val ab = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, anchorB)
                         val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, anchorB.azimuthDeg))
                         state.copy(
+                            liveCursorWorldPos = cursorWorld,
                             liveCursorGroundDistanceMeters = cursorDist,
                             liveDistanceMeters = ab,
                             twoPointDeltaAngleDeg = deltaAng,
                             liveHeightMeters = null
                         )
                     }
-                    anchorA != null && cursorDist != null -> {
-                        val liveB = GroundAnchorPoint(
-                            radialDistanceMeters = cursorDist,
-                            azimuthDeg = state.azimuthDeg,
-                            pitchDeg = state.pitchDeg
-                        )
-                        val liveAB = DistanceCalculator.calculateTwoPointGroundDistance(anchorA, liveB)
+                    anchorA != null && cursorWorld != null -> {
+                        val liveAB = DistanceCalculator.calculateWorldDistance3D(anchorA.worldPos, cursorWorld)
                         val deltaAng = abs(DistanceCalculator.shortestAngleDeltaDeg(anchorA.azimuthDeg, state.azimuthDeg))
                         state.copy(
+                            liveCursorWorldPos = cursorWorld,
                             liveCursorGroundDistanceMeters = cursorDist,
                             liveDistanceMeters = liveAB,
                             twoPointDeltaAngleDeg = deltaAng,
@@ -433,6 +443,7 @@ class RangefinderViewModel(application: Application) : AndroidViewModel(applicat
                     }
                     else -> {
                         state.copy(
+                            liveCursorWorldPos = cursorWorld,
                             liveCursorGroundDistanceMeters = cursorDist,
                             liveDistanceMeters = cursorDist,
                             twoPointDeltaAngleDeg = null,
